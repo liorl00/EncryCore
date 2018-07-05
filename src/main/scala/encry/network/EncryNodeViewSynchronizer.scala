@@ -16,6 +16,7 @@ import encry.network.NetworkController.ReceivableMessages.{DataFromPeer, Registe
 import encry.network.PeerConnectionHandler.ConnectedPeer
 import encry.network.message.BasicMsgDataTypes.{InvData, ModifiersData}
 import encry.network.message._
+import encry.settings.Algos
 import encry.utils.Logging
 import encry.view.EncryNodeViewHolder.DownloadRequest
 import encry.view.EncryNodeViewHolder.ReceivableMessages.{CompareViews, GetNodeViewChanges}
@@ -43,7 +44,6 @@ class EncryNodeViewSynchronizer(syncInfoSpec: EncrySyncInfoMessageSpec.type) ext
   override def receive: Receive = {
     case SyntacticallySuccessfulModifier(mod) if (mod.isInstanceOf[EncryBlockHeader] || mod.isInstanceOf[EncryBlockPayload] || mod.isInstanceOf[ADProofs]) &&
       historyReaderOpt.exists(_.isHeadersChainSynced) => broadcastModifierInv(mod)
-    case SyntacticallySuccessfulModifier(mod) =>
     case DownloadRequest(modifierTypeId: ModifierTypeId, modifierId: ModifierId) =>
       deliveryManager ! DownloadRequest(modifierTypeId, modifierId)
     case SuccessfulTransaction(tx) => broadcastModifierInv(tx)
@@ -61,17 +61,22 @@ class EncryNodeViewSynchronizer(syncInfoSpec: EncrySyncInfoMessageSpec.type) ext
     case HandshakedPeer(remote) => deliveryManager ! HandshakedPeer(remote)
     case DisconnectedPeer(remote) => deliveryManager ! DisconnectedPeer(remote)
     case DataFromPeer(spec, syncInfo: EncrySyncInfo@unchecked, remote) if spec.messageCode == syncInfoSpec.messageCode =>
-      historyReaderOpt match {
-        case Some(historyReader) =>
-          val extensionOpt: Option[ModifierIds] = historyReader.continuationIds(syncInfo, settings.network.networkChunkSize)
-          val ext: ModifierIds = extensionOpt.getOrElse(Seq())
-          val comparison: HistoryComparisonResult = historyReader.compare(syncInfo)
-          log.info(s"Comparison with $remote having starting points ${encry.idsToString(syncInfo.startingPoints)}. " +
-            s"Comparison result is $comparison. Sending extension of length ${ext.length}")
-          log.info(s"Extension ids: ${encry.idsToString(ext)}")
-          if (!(extensionOpt.nonEmpty || comparison != Younger)) logWarn("Extension is empty while comparison is younger")
-          self ! OtherNodeSyncingStatus(remote, comparison, extensionOpt)
-        case _ =>
+      log.info(s"$remote trying to sync with us. Our condition is: ${historyReaderOpt.exists(_.isBlockChainSynced)}")
+      if (historyReaderOpt.exists(_.isBlockChainSynced)) {
+        historyReaderOpt match {
+          case Some(historyReader) =>
+            val extensionOpt: Option[ModifierIds] = historyReader.continuationIds(syncInfo, settings.network.networkChunkSize)
+            val ext: ModifierIds = extensionOpt.getOrElse(Seq())
+            val comparison: HistoryComparisonResult = historyReader.compare(syncInfo)
+            log.info(s"Comparison with $remote having starting points ${encry.idsToString(syncInfo.startingPoints)}. " +
+              s"Comparison result is $comparison. Sending extension of length ${ext.length}")
+            //log.info(s"Extension ids: ${encry.idsToString(ext)}")
+            if (!(extensionOpt.nonEmpty || comparison != Younger)) logWarn("Extension is empty while comparison is younger")
+            self ! OtherNodeSyncingStatus(remote, comparison, extensionOpt)
+          case _ =>
+        }
+      } else {
+        historyReaderOpt.foreach(history => log.info(s"But our: ${history.bestHeaderHeight} | ${history.bestBlockHeight}"))
       }
     case DataFromPeer(spec, invData: InvData@unchecked, remote) if spec.messageCode == RequestModifierSpec.MessageCode =>
       historyReaderOpt.flatMap(h => mempoolReaderOpt.map(mp => (h, mp))).foreach { readers =>
@@ -84,7 +89,15 @@ class EncryNodeViewSynchronizer(syncInfoSpec: EncrySyncInfoMessageSpec.type) ext
         self ! ResponseFromLocal(remote, invData._1, objs)
       }
     case DataFromPeer(spec, invData: InvData@unchecked, remote) if spec.messageCode == InvSpec.MessageCode =>
-      nodeViewHolder ! CompareViews(remote, invData._1, invData._2)
+//      invData._2.foreach(mid => {
+//        log.info(s"Get mod(${invData._1}): ${Algos.encode(mid)} from ${remote.socketAddress}")
+//      })
+      if (invData._1 != Transaction.ModifierTypeId) {
+        //log.info("Send to nvh")
+        //log.info(nodeViewHolder.toString())
+        //log.info(CompareViews(remote, invData._1, invData._2).toString)
+        nodeViewHolder ! CompareViews(remote, invData._1, invData._2)
+      }
     case DataFromPeer(spec, data: ModifiersData@unchecked, remote) if spec.messageCode == ModifiersSpec.messageCode =>
       deliveryManager ! DataFromPeer(spec, data: ModifiersData@unchecked, remote)
     case RequestFromLocal(peer, modifierTypeId, modifierIds) =>
@@ -92,13 +105,16 @@ class EncryNodeViewSynchronizer(syncInfoSpec: EncrySyncInfoMessageSpec.type) ext
     case ResponseFromLocal(peer, _, modifiers: Seq[NodeViewModifier]) =>
       if (modifiers.nonEmpty) {
         val m: (ModifierTypeId, Map[ModifierId, Array[Byte]]) = modifiers.head.modifierTypeId -> modifiers.map(m => m.id -> m.bytes).toMap
+        log.info(s"Send modifiers: ${m._2.keys.foldLeft(""){case (str, modId) => str + "|" + Algos.encode(modId)}} to ${}")
         peer.handlerRef ! Message(ModifiersSpec, Right(m), None)
       }
     case a: Any => logError(s"Strange input (sender: ${sender()}): ${a.getClass}\n" + a)
   }
 
-  def broadcastModifierInv[M <: NodeViewModifier](m: M): Unit =
+  def broadcastModifierInv[M <: NodeViewModifier](m: M): Unit = {
+    log.info(s"Send to network inv message with: ${Algos.encode(m.id)}")
     networkController ! SendToNetwork(Message(invSpec, Right(m.modifierTypeId -> Seq(m.id)), None), Broadcast)
+  }
 }
 
 object EncryNodeViewSynchronizer {

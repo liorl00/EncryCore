@@ -8,6 +8,7 @@ import encry.network.NetworkController.ReceivableMessages.{DataFromPeer, SendToN
 import encry.network.PeerConnectionHandler._
 import encry.network.message.BasicMsgDataTypes.ModifiersData
 import encry.network.message.{InvSpec, Message, ModifiersSpec, RequestModifierSpec}
+import encry.settings.Algos
 import encry.stats.StatsSender.{GetModifiers, SendDownloadRequest}
 import encry.utils.Logging
 import encry.view.EncryNodeViewHolder.DownloadRequest
@@ -27,11 +28,10 @@ class EncryDeliveryManager(syncInfoSpec: EncrySyncInfoMessageSpec.type) extends 
 
   case class ToDownloadStatus(modTypeId: ModifierTypeId, firstViewed: Long, lastTry: Long)
 
-  var delivered: Map[ModifierIdAsKey, ConnectedPeer] = Map.empty
-  var deliveredSpam: Map[ModifierIdAsKey, ConnectedPeer] = Map.empty
-  var peers: Map[ModifierIdAsKey, Seq[ConnectedPeer]] = Map.empty
-  var cancellables: Map[ModifierIdAsKey, (ConnectedPeer, (Cancellable, Int))] = Map.empty
-  var expectingFromRandom: Map[ModifierIdAsKey, ToDownloadStatus] = Map.empty
+  var delivered: Map[String, ConnectedPeer] = Map.empty
+  var deliveredSpam: Map[String, ConnectedPeer] = Map.empty
+  var peers: Map[String, Seq[ConnectedPeer]] = Map.empty
+  var cancellables: Map[String, (ConnectedPeer, (Cancellable, Int))] = Map.empty
   var mempoolReaderOpt: Option[EncryMempool] = None
   var historyReaderOpt: Option[EncryHistory] = None
   val invSpec: InvSpec = new InvSpec(settings.network.maxInvObjects)
@@ -60,14 +60,15 @@ class EncryDeliveryManager(syncInfoSpec: EncrySyncInfoMessageSpec.type) extends 
       if (peerWhoDelivered(modifierId).contains(peer)) delete(modifierId)
       else reexpect(peer, modifierTypeId, modifierId)
     case CheckModifiersToDownload =>
-      removeOutdatedExpectingFromRandom()
       historyReaderOpt.foreach { h =>
-        val currentQueue: Iterable[ModifierId] = expectingFromRandomQueue
+        val currentQueue: Iterable[ModifierId] = expectingFromQueue
         val newIds: Seq[(ModifierTypeId, ModifierId)] = h.modifiersToDownload(settings.network.networkChunkSize - currentQueue.size, currentQueue)
-        val oldIds: Seq[(ModifierTypeId, ModifierId)] = idsExpectingFromRandomToRetry()
-        (newIds ++ oldIds).groupBy(_._1).foreach(ids => requestDownload(ids._1, ids._2.map(_._2)))
+        newIds.groupBy(_._1).foreach(ids => requestDownload(ids._1, ids._2.map(_._2)))
       }
-    case RequestFromLocal(peer, modifierTypeId, modifierIds) => if (modifierIds.nonEmpty) expect(peer, modifierTypeId, modifierIds)
+    case RequestFromLocal(peer, modifierTypeId, modifierIds) => {
+      modifierIds.foreach(modId => log.info(s"In RequestFromLocal in edm: ${Algos.encode(modId)}"))
+      if (modifierIds.nonEmpty) expect(peer, modifierTypeId, modifierIds)
+    }
     case DataFromPeer(spec, data: ModifiersData@unchecked, remote) if spec.messageCode == ModifiersSpec.messageCode =>
       val typeId: ModifierTypeId = data._1
       val modifiers: Map[ModifierId, Array[Byte]] = data._2
@@ -86,37 +87,54 @@ class EncryDeliveryManager(syncInfoSpec: EncrySyncInfoMessageSpec.type) extends 
       requestDownload(modifierTypeId, Seq(modifierId))
     case SendLocalSyncInfo =>
       if (statusTracker.elapsedTimeSinceLastSync() < (settings.network.syncInterval.toMillis / 2)) log.info("Trying to send sync info too often")
-      else historyReaderOpt.foreach(r => sendSync(r.syncInfo))
+      else if (historyReaderOpt.exists(history => history.isBlockChainSynced || history.bestHeaderHeight == 0)) {
+        log.info("Send sync")
+        historyReaderOpt.foreach(r => sendSync(r.syncInfo))
+      }
+      else {
+        log.info(s"Trying to send syncInfo but: 1.${historyReaderOpt.map(history => history.bestHeaderHeight + "==" + history.bestBlockHeight)}")
+      }
     case ChangedHistory(reader: EncryHistory@unchecked) if reader.isInstanceOf[EncryHistory] => historyReaderOpt = Some(reader)
   }
 
   def sendSync(syncInfo: EncrySyncInfo): Unit = {
     val peers: Seq[ConnectedPeer] = statusTracker.peersToSyncWith()
-    if (peers.nonEmpty)
+    if (peers.nonEmpty) {
+      peers.foreach(peer => log.info(s"Send sync message to: ${peer.socketAddress}"))
       networkController ! SendToNetwork(Message(syncInfoSpec, Right(syncInfo), None), SendToPeers(peers))
+    }
   }
 
   def expect(cp: ConnectedPeer, mtid: ModifierTypeId, mids: Seq[ModifierId]): Unit = tryWithLogging {
     val notRequestedIds: Seq[ModifierId] = mids.foldLeft(Seq[ModifierId]()) {
       case (notRequested, modId) =>
         val modifierKey: ModifierIdAsKey = key(modId)
+        println(s"Trying to send request to: ${Algos.encode(modId)}")
+        println(s"This mod contains in histor/queue: ${historyReaderOpt.forall(history => !history.contains(modId))} + ${!cancellables.contains(Algos.encode(modId))}")
         if (historyReaderOpt.forall(history => !history.contains(modId))) {
-          if (!cancellables.contains(modifierKey)) notRequested :+ modId
+          if (!cancellables.contains(Algos.encode(modId))) {
+            log.info(s"Add to storage: ${Algos.encode(modId)} from ${cp.socketAddress}")
+            notRequested :+ modId
+          }
           else {
-            peers = peers - modifierKey + (modifierKey -> (peers.getOrElse(modifierKey, Seq()) :+ cp).distinct)
+            println(s"First how can give us this mod is: ${cancellables(Algos.encode(modId))._1.socketAddress}")
+            peers = peers - Algos.encode(modId) + (Algos.encode(modId) -> (peers.getOrElse(Algos.encode(modId), Seq()) :+ cp).distinct)
             notRequested
           }
         } else notRequested
     }
-    if (notRequestedIds.nonEmpty) cp.handlerRef ! Message(requestModifierSpec, Right(mtid -> notRequestedIds), None)
+    if (notRequestedIds.nonEmpty) {
+      log.info(s"Send request mod for ${notRequestedIds.foldLeft(""){case (str, modId) => str + "|" + Algos.encode(modId)}}")
+      cp.handlerRef ! Message(requestModifierSpec, Right(mtid -> notRequestedIds), None)
+    }
     notRequestedIds.foreach { id =>
       val cancellable: Cancellable = context.system.scheduler.scheduleOnce(settings.network.deliveryTimeout, self, CheckDelivery(cp, mtid, id))
-      cancellables = (cancellables - key(id)) + (key(id) -> (cp, (cancellable, 0)))
+      cancellables = cancellables.updated(Algos.encode(id),(cp, (cancellable, 0)))
     }
   }
 
   def reexpect(cp: ConnectedPeer, mtid: ModifierTypeId, mid: ModifierId): Unit = tryWithLogging {
-    val midAsKey: ModifierIdAsKey = key(mid)
+    val midAsKey: String = Algos.encode(mid)
     cancellables.get(midAsKey).foreach(peerInfo =>
       if (peerInfo._2._2 < settings.network.maxDeliveryChecks) {
         cp.handlerRef ! Message(requestModifierSpec, Right(mtid -> Seq(mid)), None)
@@ -135,15 +153,15 @@ class EncryDeliveryManager(syncInfoSpec: EncrySyncInfoMessageSpec.type) extends 
     )
   }
 
-  def isExpecting(mtid: ModifierTypeId, mid: ModifierId, cp: ConnectedPeer): Boolean = cancellables.get(key(mid)).exists(_._1 == cp)
+  def isExpecting(mtid: ModifierTypeId, mid: ModifierId, cp: ConnectedPeer): Boolean = cancellables.get(Algos.encode(mid)).exists(_._1 == cp)
 
-  def delete(mid: ModifierId): Unit = tryWithLogging(delivered -= key(mid))
+  def delete(mid: ModifierId): Unit = tryWithLogging(delivered -= Algos.encode(mid))
 
-  def deleteSpam(mids: Seq[ModifierId]): Unit = for (id <- mids) tryWithLogging(deliveredSpam -= key(id))
+  def deleteSpam(mids: Seq[ModifierId]): Unit = for (id <- mids) tryWithLogging(deliveredSpam -= Algos.encode(id))
 
-  def isSpam(mid: ModifierId): Boolean = deliveredSpam contains key(mid)
+  def isSpam(mid: ModifierId): Boolean = deliveredSpam contains Algos.encode(mid)
 
-  def peerWhoDelivered(mid: ModifierId): Option[ConnectedPeer] = delivered.get(key(mid))
+  def peerWhoDelivered(mid: ModifierId): Option[ConnectedPeer] = delivered.get(Algos.encode(mid))
 
   def sendExtension(remote: ConnectedPeer, status: HistoryComparisonResult,
                     extOpt: Option[Seq[(ModifierTypeId, ModifierId)]]): Unit = extOpt match {
@@ -161,16 +179,7 @@ class EncryDeliveryManager(syncInfoSpec: EncrySyncInfoMessageSpec.type) extends 
     }
   }
 
-  def expectingFromRandomQueue: Iterable[ModifierId] = ModifierId @@ expectingFromRandom.keys.map(_.array)
-
-  def removeOutdatedExpectingFromRandom(): Unit = expectingFromRandom
-    .filter { case (_, status) => status.firstViewed < timeProvider.time() - settings.network.toDownloadLifetime.toMillis }
-    .foreach { case (key, _) => expectingFromRandom -= key }
-
-  def idsExpectingFromRandomToRetry(): Seq[(ModifierTypeId, ModifierId)] = expectingFromRandom
-    .filter(_._2.lastTry < timeProvider.time() - settings.network.toDownloadRetryInterval.toMillis).toSeq
-    .sortBy(_._2.lastTry)
-    .map(i => (i._2.modTypeId, ModifierId @@ i._1.array))
+  def expectingFromQueue: Iterable[ModifierId] = cancellables.keys.map(key => ModifierId @@ Algos.decode(key).get)
 
   def requestDownload(modifierTypeId: ModifierTypeId, modifierIds: Seq[ModifierId]): Unit = {
     val msg: Message[(ModifierTypeId, Seq[ModifierId])] = Message(requestModifierSpec, Right(modifierTypeId -> modifierIds), None)
@@ -182,15 +191,12 @@ class EncryDeliveryManager(syncInfoSpec: EncrySyncInfoMessageSpec.type) extends 
   }
 
   def receive(mtid: ModifierTypeId, mid: ModifierId, cp: ConnectedPeer): Unit = tryWithLogging {
-    if (expectingFromRandom.contains(key(mid))) {
-      expectingFromRandom -= key(mid)
-      delivered = delivered - key(mid) + (key(mid) -> cp)
-    } else if (isExpecting(mtid, mid, cp)) {
-      delivered = delivered - key(mid) + (key(mid) -> cp)
-      cancellables.get(key(mid)).foreach(_._2._1.cancel())
-      cancellables -= key(mid)
-      peers -= key(mid)
+    if (isExpecting(mtid, mid, cp)) {
+      delivered = delivered - Algos.encode(mid) + (Algos.encode(mid) -> cp)
+      cancellables.get(Algos.encode(mid)).foreach(_._2._1.cancel())
+      cancellables -= Algos.encode(mid)
+      peers -= Algos.encode(mid)
     }
-    else deliveredSpam = deliveredSpam - key(mid) + (key(mid) -> cp)
+    else deliveredSpam = deliveredSpam - Algos.encode(mid) + (Algos.encode(mid) -> cp)
   }
 }

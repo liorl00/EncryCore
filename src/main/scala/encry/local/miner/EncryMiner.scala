@@ -66,6 +66,7 @@ class EncryMiner extends Actor with Logging {
       context.become(miningDisabled)
 
     case MinedBlock(block) if candidateOpt.exists(_.stateRoot sameElements block.header.stateRoot) =>
+      log.info(s"Get mined block: ${block.id} send to nvh")
       nodeViewHolder ! LocallyGeneratedModifier(block.header)
       nodeViewHolder ! LocallyGeneratedModifier(block.payload)
       if (settings.node.stateMode == StateMode.Digest) block.adProofsOpt.foreach(adp => nodeViewHolder ! LocallyGeneratedModifier(adp))

@@ -47,6 +47,8 @@ trait EncryHistoryReader
   def getHeaderIds(count: Int, offset: Int = 0): Seq[ModifierId] = (offset until (count + offset))
     .flatMap(h => headerIdsAtHeight(h).headOption)
 
+  def isBlockChainSynced: Boolean = bestBlockHeight == bestHeaderHeight
+
   /** Id of best block to mine */
   override def openSurfaceIds(): Seq[ModifierId] = bestBlockIdOpt.orElse(bestHeaderIdOpt).toSeq
 

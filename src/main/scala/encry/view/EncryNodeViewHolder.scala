@@ -1,6 +1,7 @@
 package encry.view
 
 import java.io.File
+
 import akka.actor.{Actor, Props}
 import encry.EncryApp._
 import encry.consensus.History.ProgressInfo
@@ -24,6 +25,7 @@ import encry.view.state.{Proposition, _}
 import encry.view.wallet.EncryWallet
 import encry.{EncryApp, ModifierId, ModifierTypeId, VersionTag}
 import scorex.crypto.authds.ADDigest
+
 import scala.annotation.tailrec
 import scala.collection.mutable
 import scala.util.{Failure, Success, Try}
@@ -80,10 +82,22 @@ class EncryNodeViewHolder[StateType <: EncryState[StateType]] extends Actor with
       if (state) sender() ! ChangedState(nodeView.state)
       if (mempool) sender() ! ChangedMempool(nodeView.mempool)
     case CompareViews(peer, modifierTypeId, modifierIds) =>
+
+      modifierIds.foreach(modId => log.info(s"In Compare views: ${Algos.encode(modId)}"))
+
       val ids: Seq[ModifierId] = modifierTypeId match {
-        case typeId: ModifierTypeId if typeId == Transaction.ModifierTypeId => nodeView.mempool.notIn(modifierIds)
-        case _ => modifierIds.filterNot(mid => nodeView.history.contains(mid) || modifiersCache.contains(key(mid)))
+        case typeId: ModifierTypeId if typeId == Transaction.ModifierTypeId => {
+          modifierIds.foreach(id => log.info(s"Got tx: ${id} from ${peer.socketAddress}"))
+          nodeView.mempool.notIn(modifierIds)
+        }
+        case _ => modifierIds.filterNot(mid => {
+          log.info(s"Get mod: ${Algos.encode(mid)} from ${peer.socketAddress}")
+          nodeView.history.contains(mid) || modifiersCache.contains(key(mid))
+        })
       }
+
+      ids.foreach(modId => log.info(s"In Compare views after filter: ${Algos.encode(modId)}"))
+
       sender() ! RequestFromLocal(peer, modifierTypeId, ids)
     case a: Any => logError("Strange input: " + a)
   }
