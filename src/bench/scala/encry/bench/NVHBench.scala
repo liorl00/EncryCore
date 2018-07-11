@@ -23,8 +23,6 @@ object NVHBench extends App with Logging {
   implicit val materializer: ActorMaterializer = ActorMaterializer()
   implicit val ec: ExecutionContextExecutor = system.dispatcher
 
-  EncryApp.main(Array.empty)
-
   lazy val nodeViewHolder: ActorRef = system.actorOf(EncryNodeViewHolder.props(), "nodeViewHolder")
 
   val modsApplicationBencher: ActorRef = system.actorOf(Props[ModsApplicationBencher], "modsApplicationBencher")

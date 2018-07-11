@@ -40,7 +40,7 @@ class ModsApplicationBencher extends Actor with Logging {
     case StartModifiersApplication(container) =>
       logInfo("Starting modifiers application bench")
 
-      val headers: IndexedSeq[EncryBlockHeader] = container.lastHeaders(container.bestHeaderHeight).headers
+      val headers: IndexedSeq[EncryBlockHeader] = container.lastHeaders(container.bestHeaderHeight + 1).headers
       val payloads: IndexedSeq[EncryBlockPayload] = headers.map { h =>
         container.getBlock(h).getOrElse(throw new Error(s"Bench failed. Unable to find block for header $h"))
       }.map(_.payload)
