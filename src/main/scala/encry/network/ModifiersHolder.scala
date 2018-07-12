@@ -1,15 +1,18 @@
 package encry.network
 
+import java.net.InetSocketAddress
+
 import akka.persistence._
 import encry.EncryApp._
 import encry.modifiers.history.block.EncryBlock
-import encry.modifiers.history.block.header.EncryBlockHeader
-import encry.modifiers.history.block.payload.EncryBlockPayload
+import encry.modifiers.history.block.header.{EncryBlockHeader, EncryBlockHeaderSerializer}
+import encry.modifiers.history.block.payload.{EncryBlockPayload, EncryBlockPayloadSerializer}
 import encry.modifiers.{EncryPersistentModifier, NodeViewModifier}
 import encry.network.ModifiersHolder._
+import encry.network.PeerConnectionHandler.{ConnectedPeer, Incoming}
 import encry.settings.Algos
 import encry.utils.Logging
-import encry.view.EncryNodeViewHolder.ReceivableMessages.LocallyGeneratedModifier
+import encry.view.EncryNodeViewHolder.ReceivableMessages.{LocallyGeneratedModifier, ModifiersFromRemote}
 import encry.{ModifierId, ModifierTypeId}
 
 import scala.collection.immutable.SortedMap
@@ -25,6 +28,17 @@ class ModifiersHolder extends PersistentActor with Logging {
   var payloads: Map[String, (EncryBlockPayload, Int)] = Map.empty
   var nonCompletedBlocks: Map[String, String] = Map.empty
   var completedBlocks: SortedMap[Int, EncryBlock] = SortedMap.empty
+  var fakePeer: ConnectedPeer = ConnectedPeer(
+    new InetSocketAddress("1.1.1.1", 8080),
+    nodeViewSynchronizer,
+    Incoming,
+    Handshake (
+      Version(0: Byte, 1: Byte, 3: Byte),
+      "modHolder",
+      None,
+      1L
+    )
+  )
 
   context.system.scheduler.schedule(10.second, 30.second) {
     logger.info(Statistics(headers, payloads, nonCompletedBlocks, completedBlocks).toString)
@@ -57,12 +71,12 @@ class ModifiersHolder extends PersistentActor with Logging {
         case (applicableHeaders, header) =>
           if (applicableHeaders.last.height + 1 == header.height) applicableHeaders :+ header
           else applicableHeaders
-      }.foreach(header => nodeViewHolder ! LocallyGeneratedModifier(header))
+      }.foreach(header => nodeViewHolder ! ModifiersFromRemote(fakePeer, EncryBlockHeader.modifierTypeId, Seq(EncryBlockHeaderSerializer.toBytes(header))))
       if (completedBlocks.keys.headOption.contains(0)) completedBlocks.foldLeft(Seq(completedBlocks.head._2)) {
         case (applicableBlocks, blockWithHeight) =>
           if (applicableBlocks.last.header.height + 1 == blockWithHeight._1) applicableBlocks :+ blockWithHeight._2
           else applicableBlocks
-      }.foreach(block => nodeViewHolder ! LocallyGeneratedModifier(block.payload))
+      }.foreach(block => nodeViewHolder ! ModifiersFromRemote(fakePeer, EncryBlockPayload.modifierTypeId, Seq(EncryBlockPayloadSerializer.toBytes(block.payload))))
     case RequestedModifiers(modifierTypeId, modifiers) => updateModifiers(modifierTypeId, modifiers)
     case lm: LocallyGeneratedModifier[EncryPersistentModifier] => updateModifiers(lm.pmod.modifierTypeId, Seq(lm.pmod))
     case x: Any => logger.info(s"Strange input: $x")

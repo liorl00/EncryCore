@@ -122,8 +122,8 @@ class PeerConnectionHandler(messagesHandler: MessageHandler,
       t._1.find { packet =>
         messagesHandler.parseBytes(packet.toByteBuffer, selfPeer) match {
           case Success(message) =>
-            log.info("Received message " + message.spec + " from " + remote)
-            networkController ! message
+            //log.info("Received message " + message.spec + " from " + remote)
+            //networkController ! message
             false
           case Failure(e) =>
             log.info(s"Corrupted data from: " + remote, e)
