@@ -1,6 +1,7 @@
 package encry.stats
 
 import java.io.File
+import java.net.{InetAddress, InetSocketAddress}
 import java.util
 
 import akka.actor.Actor
@@ -9,12 +10,12 @@ import encry.consensus.EncrySupplyController
 import encry.modifiers.history.block.header.EncryBlockHeader
 import encry.settings.Algos
 import encry.stats.StatsSender._
-import encry.utils.Logging
+import encry.utils.{Logging, NetworkTimeProvider}
 import encry.view.history
 import encry.{ModifierId, ModifierTypeId}
 import org.influxdb.{InfluxDB, InfluxDBFactory}
 
-class StatsSender extends Actor with Logging {
+class StatsSender(ntp: NetworkTimeProvider) extends Actor with Logging {
 
   val influxDB: InfluxDB =
     InfluxDBFactory.connect(settings.influxDB.url, settings.influxDB.login, settings.influxDB.password)
@@ -50,8 +51,28 @@ class StatsSender extends Actor with Logging {
         )
       )
 
+    case DownloadResponse(modifiersId: Seq[ModifierId], to: InetSocketAddress) =>
+      modifiersId.map(Algos.encode).foreach(modId =>
+        influxDB.write(
+          8189,
+          s"downloadResponse," +
+            s"requestFrom=${to.getAddress}," +
+            s"modId=$modId," +
+            s" value=${timeProvider.time()}"
+        )
+      )
+
     case SendDownloadRequest(modifierTypeId: ModifierTypeId, modifiers: Seq[ModifierId]) =>
       modifiersToDownload = modifiersToDownload ++ modifiers.map(mod => (Algos.encode(mod), (modifierTypeId, System.currentTimeMillis())))
+      modifiers.map(Algos.encode).foreach(modId =>
+        influxDB.write(
+          8189,
+          s"downloadRequest," +
+            s"requestFrom=${InetAddress.getLocalHost}," +
+            s"modId=$modId," +
+            s" value=${timeProvider.time()}"
+        )
+      )
 
     case GetModifiers(modifierTypeId: ModifierTypeId, modifiers: Seq[ModifierId]) =>
       modifiers.foreach(downloadedModifierId =>
@@ -78,4 +99,5 @@ object StatsSender {
 
   case class BlocksStat(notCompletedBlocks: Int, headerCache: Int, payloadCache: Int, completedBlocks: Int)
 
+  case class DownloadResponse(modifiersId: Seq[ModifierId], to: InetSocketAddress)
 }

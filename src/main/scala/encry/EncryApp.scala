@@ -22,6 +22,7 @@ import encry.stats.StatsSender
 import encry.utils.{Logging, NetworkTimeProvider}
 import encry.view.history.EncrySyncInfoMessageSpec
 import encry.view.{EncryNodeViewHolder, EncryViewReadersHolder}
+
 import scala.concurrent.ExecutionContextExecutor
 import scala.concurrent.duration._
 import scala.io.Source
@@ -86,7 +87,7 @@ object EncryApp extends App with Logging {
     Http().bindAndHandle(combinedRoute, settings.restApi.bindAddress.getAddress.getHostAddress, settings.restApi.bindAddress.getPort)
   }
 
-  if (settings.node.sendStat) system.actorOf(Props[StatsSender], "statsSender")
+  if (settings.node.sendStat) system.actorOf(Props(classOf[StatsSender], timeProvider), "statsSender")
   if (settings.node.mining) miner ! StartMining
   if (settings.levelDb.enable) system.actorOf(Props[ModifiersHolder], "modifiersHolder")
   if (settings.testing.transactionGeneration) system.actorOf(Props[TransactionGenerator], "tx-generator") ! StartGeneration

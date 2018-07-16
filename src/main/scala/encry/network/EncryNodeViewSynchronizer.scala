@@ -18,6 +18,7 @@ import encry.network.NetworkController.ReceivableMessages.{DataFromPeer, Registe
 import encry.network.PeerConnectionHandler.ConnectedPeer
 import encry.network.message.BasicMsgDataTypes.{InvData, ModifiersData}
 import encry.network.message._
+import encry.stats.StatsSender.DownloadResponse
 import encry.utils.Logging
 import encry.view.EncryNodeViewHolder.DownloadRequest
 import encry.view.EncryNodeViewHolder.ReceivableMessages.{CompareViews, GetNodeViewChanges}
@@ -97,6 +98,8 @@ class EncryNodeViewSynchronizer(syncInfoSpec: EncrySyncInfoMessageSpec.type) ext
     case ResponseFromLocal(peer, _, modifiers: Seq[NodeViewModifier]) =>
       if (modifiers.nonEmpty) {
         val m: (ModifierTypeId, Map[ModifierId, Array[Byte]]) = modifiers.head.modifierTypeId -> modifiers.map(m => m.id -> m.bytes).toMap
+        if (settings.node.sendStat)
+          context.actorSelection("/user/statsSender") ! DownloadResponse(modifiers.map(_.id), peer.socketAddress)
         peer.handlerRef ! Message(ModifiersSpec, Right(m), None)
       }
     case a: Any => logError(s"Strange input (sender: ${sender()}): ${a.getClass}\n" + a)
