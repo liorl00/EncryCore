@@ -56,7 +56,7 @@ class StatsSender(ntp: NetworkTimeProvider) extends Actor with Logging {
         influxDB.write(
           8189,
           s"downloadResponse," +
-            s"requestFrom=${to.getAddress}," +
+            s"requestFrom=${to.getAddress.getHostAddress}," +
             s"modId=$modId," +
             s" value=${timeProvider.time()}"
         )
@@ -65,7 +65,7 @@ class StatsSender(ntp: NetworkTimeProvider) extends Actor with Logging {
     case SendDownloadRequest(modifierTypeId: ModifierTypeId, modifiers: Seq[ModifierId]) =>
       modifiersToDownload = modifiersToDownload ++ modifiers.map(mod => (Algos.encode(mod), (modifierTypeId, System.currentTimeMillis())))
       modifiers.map(Algos.encode).foreach(modId => {
-        println(          s"downloadRequest," +
+        println(s"downloadRequest," +
           s"requestFrom=${InetAddress.getLocalHost.getHostAddress}," +
           s"modId=$modId," +
           s" value=${timeProvider.time()}")
