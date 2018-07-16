@@ -69,7 +69,7 @@ class EncryMiner extends Actor with Logging {
     case MinedBlock(block, workerIdx) if candidateOpt.exists(_.stateRoot sameElements block.header.stateRoot) =>
       nodeViewHolder ! LocallyGeneratedModifier(block.header)
       nodeViewHolder ! LocallyGeneratedModifier(block.payload)
-      if (settings.node.sendStat) system.actorSelection("user/statsSender") ! MiningEnd(block.header, workerIdx, context.children.size)
+      if (settings.node.sendStat) system.actorSelection("/user/statsSender") ! MiningEnd(block.header, workerIdx, context.children.size)
       if (settings.node.stateMode == StateMode.Digest) block.adProofsOpt.foreach(adp => nodeViewHolder ! LocallyGeneratedModifier(adp))
       candidateOpt = None
       context.children.foreach(_ ! DropChallenge)

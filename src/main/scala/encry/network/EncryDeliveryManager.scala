@@ -73,7 +73,7 @@ class EncryDeliveryManager(syncInfoSpec: EncrySyncInfoMessageSpec.type) extends 
       val modifiers: Map[ModifierId, Array[Byte]] = data._2
       val (spam: Map[ModifierId, Array[Byte]], fm: Map[ModifierId, Array[Byte]]) =
         modifiers partition { case (id, _) => isSpam(id) }
-      if (settings.node.sendStat) context.actorSelection("akka://encry/user/statsSender") ! GetModifiers(typeId, modifiers.keys.toSeq)
+      if (settings.node.sendStat) context.actorSelection("/user/statsSender") ! GetModifiers(typeId, modifiers.keys.toSeq)
       log.info(s"Got modifiers (${modifiers.size}) of type $typeId from remote connected peer: $remote")
       for ((id, _) <- modifiers) receive(typeId, id, remote)
       if (spam.nonEmpty) {
@@ -113,7 +113,10 @@ class EncryDeliveryManager(syncInfoSpec: EncrySyncInfoMessageSpec.type) extends 
             }
           } else notRequested
       }
-      if (notRequestedIds.nonEmpty) cp.handlerRef ! Message(requestModifierSpec, Right(mtid -> notRequestedIds), None)
+      if (notRequestedIds.nonEmpty) {
+        cp.handlerRef ! Message(requestModifierSpec, Right(mtid -> notRequestedIds), None)
+        if (settings.node.sendStat) context.actorSelection("/user/statsSender") ! SendDownloadRequest(mtid, notRequestedIds)
+      }
       notRequestedIds.foreach { id =>
         val cancellable: Cancellable = context.system.scheduler.scheduleOnce(settings.network.deliveryTimeout, self, CheckDelivery(cp, mtid, id))
         cancellables = (cancellables - key(id)) + (key(id) -> (cp, (cancellable, 0)))
@@ -169,7 +172,6 @@ class EncryDeliveryManager(syncInfoSpec: EncrySyncInfoMessageSpec.type) extends 
 
   def requestDownload(modifierTypeId: ModifierTypeId, modifierIds: Seq[ModifierId]): Unit = {
     val msg: Message[(ModifierTypeId, Seq[ModifierId])] = Message(requestModifierSpec, Right(modifierTypeId -> modifierIds), None)
-    if (settings.node.sendStat) context.actorSelection("akka://encry/user/statsSender") ! SendDownloadRequest(modifierTypeId, modifierIds)
     statusTracker.peersToSyncWith().foreach(peer => {
       expect(peer, modifierTypeId, modifierIds)
       networkController ! SendToNetwork(msg, SendToPeer(peer))
