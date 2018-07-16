@@ -57,7 +57,7 @@ class StatsSender(ntp: NetworkTimeProvider) extends Actor with Logging {
           8189,
           s"downloadResponse," +
             s"requestFrom=${to.getAddress.getHostAddress}," +
-            s"modId=$modId," +
+            s"modId=$modId" +
             s" value=${timeProvider.time()}"
         )
       )
