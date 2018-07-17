@@ -80,9 +80,9 @@ class EncryMiner extends Actor with Logging {
     case MinedBlock(block, workerIdx) if candidateOpt.exists(_.stateRoot sameElements block.header.stateRoot) =>
       println(s"End mining in ${sdf.format(new Date(System.currentTimeMillis()))} with block: ${Algos.encode(block.id)}")
       println(s"Send to nvh lgm with header in ${sdf.format(new Date(System.currentTimeMillis()))}")
-      system.actorSelection("user/nodeViewHolder") ! LocallyGeneratedModifier(block.header)
+      nodeViewHolder ! LocallyGeneratedModifier(block.header)
       println(s"Send to nvh lgm with payload in ${sdf.format(new Date(System.currentTimeMillis()))}")
-      system.actorSelection("user/nodeViewHolder") ! LocallyGeneratedModifier(block.payload)
+      nodeViewHolder ! LocallyGeneratedModifier(block.payload)
       if (settings.node.sendStat) {
         system.actorSelection("user/statsSender") ! StartSendingLocalHeader(block.header)
         system.actorSelection("user/statsSender") ! MiningEnd(block.header, workerIdx, context.children.size)
