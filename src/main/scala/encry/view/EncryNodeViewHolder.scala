@@ -7,6 +7,8 @@ import java.util.Date
 import akka.actor.{Actor, Props}
 import encry.EncryApp._
 import encry.consensus.History.ProgressInfo
+import encry.local.miner.EncryMiner
+import encry.local.miner.EncryMiner.CandidateEnvelope
 import encry.modifiers._
 import encry.modifiers.history.block.EncryBlock
 import encry.modifiers.history.block.header.{EncryBlockHeader, EncryBlockHeaderSerializer}
@@ -102,6 +104,20 @@ class EncryNodeViewHolder[StateType <: EncryState[StateType]] extends Actor with
       if (history) sender() ! ChangedHistory(nodeView.history)
       if (state) sender() ! ChangedState(nodeView.state)
       if (mempool) sender() ! ChangedMempool(nodeView.mempool)
+    case ProduceNextCandidate =>
+      log.info(s"Starting candidate generation in ${sdf.format(new Date(System.currentTimeMillis()))}")
+      var startTime = System.currentTimeMillis()
+//      if (settings.node.sendStat) {
+//        system.actorSelection("user/statsSender") ! SleepTime(System.currentTimeMillis() - sleepTime)
+//      }
+      val bestHeaderOpt: Option[EncryBlockHeader] = nodeView.history.bestBlockOpt.map(_.header)
+      val candidate = if (bestHeaderOpt.isDefined || settings.node.offlineGeneration)
+        CandidateEnvelope.fromCandidate(EncryMiner.createCandidate(CurrentView(nodeView.history, nodeView.state.asInstanceOf[UtxoState], nodeView.wallet, nodeView.mempool), bestHeaderOpt))
+      else CandidateEnvelope.empty
+      if (settings.node.sendStat) {
+        system.actorSelection("user/statsSender") ! CandidateProducingTime(System.currentTimeMillis() - startTime)
+      }
+      sender ! candidate
     case CompareViews(peer, modifierTypeId, modifierIds) =>
       val ids: Seq[ModifierId] = modifierTypeId match {
         case typeId: ModifierTypeId if typeId == Transaction.ModifierTypeId => nodeView.mempool.notIn(modifierIds)
@@ -361,6 +377,7 @@ object EncryNodeViewHolder {
 
     case class LocallyGeneratedModifier[EncryPersistentModifier <: PersistentNodeViewModifier](pmod: EncryPersistentModifier)
 
+    case object ProduceNextCandidate
   }
 
   def props(): Props = settings.node.stateMode match {

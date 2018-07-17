@@ -19,7 +19,7 @@ import encry.stats.StatsSender._
 import encry.utils.Logging
 import encry.utils.NetworkTime.Time
 import encry.view.EncryNodeViewHolder.CurrentView
-import encry.view.EncryNodeViewHolder.ReceivableMessages.{GetDataFromCurrentView, LocallyGeneratedModifier}
+import encry.view.EncryNodeViewHolder.ReceivableMessages.{GetDataFromCurrentView, LocallyGeneratedModifier, ProduceNextCandidate}
 import encry.view.history.{EncryHistory, Height}
 import encry.view.mempool.EncryMempool
 import encry.view.state.{StateMode, UtxoState}
@@ -141,6 +141,41 @@ class EncryMiner extends Actor with Logging {
     context.system.scheduler.scheduleOnce(settings.node.miningDelay, self, StartMining)
   }
 
+  def produceCandidate(): Unit = {
+    println(s"Starting to generate candidate in ${sdf.format(new Date(System.currentTimeMillis()))}")
+    nodeViewHolder ! ProduceNextCandidate
+    println(s"End generation in ${sdf.format(new Date(System.currentTimeMillis()))}")
+  }
+}
+
+object EncryMiner extends Logging {
+
+  case object DisableMining
+
+  case object EnableMining
+
+  case object StartMining
+
+  case object GetMinerStatus
+
+  case class MinedBlock(block: EncryBlock, workerIdx: Int)
+
+  case class MinerStatus(isMining: Boolean, candidateBlock: Option[CandidateBlock]) {
+    lazy val json: Json = Map(
+      "isMining" -> isMining.asJson,
+      "candidateBlock" -> candidateBlock.map(_.asJson).getOrElse("None".asJson)
+    ).asJson
+  }
+
+  case class CandidateEnvelope(c: Option[CandidateBlock])
+
+  object CandidateEnvelope {
+
+    val empty: CandidateEnvelope = CandidateEnvelope(None)
+
+    def fromCandidate(c: CandidateBlock): CandidateEnvelope = CandidateEnvelope(Some(c))
+  }
+
   def createCandidate(view: CurrentView[EncryHistory, UtxoState, EncryWallet, EncryMempool],
                       bestHeaderOpt: Option[EncryBlockHeader]): CandidateBlock = {
     val timestamp: Time = timeProvider.time()
@@ -183,54 +218,6 @@ class EncryMiner extends Actor with Logging {
       s"and 1 coinbase for height $height")
 
     candidate
-  }
-
-  def produceCandidate(): Unit = {
-    println(s"Starting to generate candidate in ${sdf.format(new Date(System.currentTimeMillis()))}")
-    nodeViewHolder ! GetDataFromCurrentView[EncryHistory, UtxoState, EncryWallet, EncryMempool, CandidateEnvelope] { view =>
-      log.info(s"Starting candidate generation in ${sdf.format(new Date(System.currentTimeMillis()))}")
-      startTime = System.currentTimeMillis()
-      if (settings.node.sendStat) {
-        system.actorSelection("user/statsSender") ! SleepTime(System.currentTimeMillis() - sleepTime)
-      }
-      val bestHeaderOpt: Option[EncryBlockHeader] = view.history.bestBlockOpt.map(_.header)
-      val candidate = if (bestHeaderOpt.isDefined || settings.node.offlineGeneration) CandidateEnvelope.fromCandidate(createCandidate(view, bestHeaderOpt))
-      else CandidateEnvelope.empty
-      if (settings.node.sendStat) {
-        system.actorSelection("user/statsSender") ! CandidateProducingTime(System.currentTimeMillis() - startTime)
-      }
-      candidate
-    }
-    println(s"End generation in ${sdf.format(new Date(System.currentTimeMillis()))}")
-  }
-}
-
-object EncryMiner extends Logging {
-
-  case object DisableMining
-
-  case object EnableMining
-
-  case object StartMining
-
-  case object GetMinerStatus
-
-  case class MinedBlock(block: EncryBlock, workerIdx: Int)
-
-  case class MinerStatus(isMining: Boolean, candidateBlock: Option[CandidateBlock]) {
-    lazy val json: Json = Map(
-      "isMining" -> isMining.asJson,
-      "candidateBlock" -> candidateBlock.map(_.asJson).getOrElse("None".asJson)
-    ).asJson
-  }
-
-  case class CandidateEnvelope(c: Option[CandidateBlock])
-
-  object CandidateEnvelope {
-
-    val empty: CandidateEnvelope = CandidateEnvelope(None)
-
-    def fromCandidate(c: CandidateBlock): CandidateEnvelope = CandidateEnvelope(Some(c))
   }
 
   implicit val jsonEncoder: Encoder[MinerStatus] = (r: MinerStatus) =>
