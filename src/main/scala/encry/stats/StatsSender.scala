@@ -6,6 +6,7 @@ import java.util
 import akka.actor.Actor
 import encry.EncryApp.{settings, timeProvider}
 import encry.consensus.EncrySupplyController
+import encry.modifiers.history.block.EncryBlock
 import encry.modifiers.history.block.header.EncryBlockHeader
 import encry.settings.Algos
 import encry.stats.StatsSender._
@@ -20,6 +21,8 @@ class StatsSender extends Actor with Logging {
     InfluxDBFactory.connect(settings.influxDB.url, settings.influxDB.login, settings.influxDB.password)
 
   var modifiersToDownload: Map[String, (ModifierTypeId, Long)] = Map()
+
+  var startTimeOfBlockApplying: Map[String, Long] = Map()
 
   influxDB.setRetentionPolicy("autogen")
 
@@ -73,6 +76,14 @@ class StatsSender extends Actor with Logging {
     case StateUpdating(time: Long) =>
       influxDB.write(8189, s"stateUpdatingTime,nodeName=${settings.network.nodeName} value=$time")
 
+    case StartSendingLocalHeader(header: EncryBlockHeader) =>
+      startTimeOfBlockApplying += Algos.encode(header.id) -> System.currentTimeMillis()
+
+    case EndBlockApplying(block: EncryBlock) =>
+      startTimeOfBlockApplying.get(Algos.encode(block.id)).foreach(startTime =>
+        influxDB.write(8189, s"blockApplyingTime,nodeName=${settings.network.nodeName} value=${System.currentTimeMillis() - startTime}")
+      )
+
     case SendDownloadRequest(modifierTypeId: ModifierTypeId, modifiers: Seq[ModifierId]) =>
       modifiersToDownload = modifiersToDownload ++ modifiers.map(mod => (Algos.encode(mod), (modifierTypeId, System.currentTimeMillis())))
 
@@ -112,4 +123,8 @@ object StatsSender {
   case class BlocksStat(notCompletedBlocks: Int, headerCache: Int, payloadCache: Int, completedBlocks: Int)
 
   case class StateUpdating(time: Long)
+
+  case class StartSendingLocalHeader(header: EncryBlockHeader)
+
+  case class EndBlockApplying(block: EncryBlock)
 }

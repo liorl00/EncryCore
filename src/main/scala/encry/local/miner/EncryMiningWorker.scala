@@ -26,7 +26,7 @@ class EncryMiningWorker(myIdx: Int, numberOfWorkers: Int) extends Actor with Log
         s"Iter qty: ${nonce - (Long.MaxValue / numberOfWorkers * myIdx) + 1} on worker: $myIdx with diff: ${candidate.difficulty}")
       ConsensusSchemeReaders.consensusScheme.verifyCandidate(candidate, nonce)
       .fold(self ! MineBlock(candidate, nonce + 1)) { block =>
-        log.info(s"New block is found: $block on worker $self in ${sdf.format(new Date(System.currentTimeMillis()))}. Iter qty: ${nonce - (Long.MaxValue / numberOfWorkers * myIdx) + 1}")
+        log.info(s"New block is found : $block on worker $self in ${sdf.format(new Date(System.currentTimeMillis()))}. Iter qty: ${nonce - (Long.MaxValue / numberOfWorkers * myIdx) + 1}")
         miner ! MinedBlock(block, myIdx)
       }
 

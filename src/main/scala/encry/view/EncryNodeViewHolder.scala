@@ -6,6 +6,7 @@ import akka.actor.{Actor, Props}
 import encry.EncryApp._
 import encry.consensus.History.ProgressInfo
 import encry.modifiers._
+import encry.modifiers.history.block.EncryBlock
 import encry.modifiers.history.block.header.{EncryBlockHeader, EncryBlockHeaderSerializer}
 import encry.modifiers.history.block.payload.{EncryBlockPayload, EncryBlockPayloadSerializer}
 import encry.modifiers.history.{ADProofSerializer, ADProofs}
@@ -17,7 +18,7 @@ import encry.network.EncryNodeViewSynchronizer.ReceivableMessages._
 import encry.network.ModifiersHolder.{ApplyState, RequestedModifiers}
 import encry.network.PeerConnectionHandler.ConnectedPeer
 import encry.settings.Algos
-import encry.stats.StatsSender.{BestHeaderInChain, EndOfApplyingModif, StartApplyingModif, StateUpdating}
+import encry.stats.StatsSender._
 import encry.utils.Logging
 import encry.view.EncryNodeViewHolder.ReceivableMessages._
 import encry.view.EncryNodeViewHolder.{DownloadRequest, _}
@@ -172,6 +173,13 @@ class EncryNodeViewHolder[StateType <: EncryState[StateType]] extends Actor with
             case Success(stateAfterApply) =>
               val newHis: EncryHistory = history.reportModifierIsValid(modToApply)
               context.system.eventStream.publish(SemanticallySuccessfulModifier(modToApply))
+              modToApply match {
+
+                case block: EncryBlock =>
+                  if (settings.node.sendStat)
+                    system.actorSelection("user/statsSender") ! EndBlockApplying(block)
+                case _ =>
+              }
               UpdateInformation(newHis, stateAfterApply, None, None, u.suffix :+ modToApply)
             case Failure(e) =>
               val (newHis: EncryHistory, newProgressInfo: ProgressInfo[EncryPersistentModifier]) =

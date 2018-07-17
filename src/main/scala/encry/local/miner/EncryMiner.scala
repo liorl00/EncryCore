@@ -15,7 +15,7 @@ import encry.modifiers.state.box.AssetBox
 import encry.modifiers.state.box.Box.Amount
 import encry.network.EncryNodeViewSynchronizer.ReceivableMessages.SemanticallySuccessfulModifier
 import encry.settings.Constants
-import encry.stats.StatsSender.{CandidateProducingTime, MiningEnd, MiningTime, SleepTime}
+import encry.stats.StatsSender._
 import encry.utils.Logging
 import encry.utils.NetworkTime.Time
 import encry.view.EncryNodeViewHolder.CurrentView
@@ -81,6 +81,7 @@ class EncryMiner extends Actor with Logging {
       nodeViewHolder ! LocallyGeneratedModifier(block.header)
       nodeViewHolder ! LocallyGeneratedModifier(block.payload)
       if (settings.node.sendStat) {
+        system.actorSelection("user/statsSender") ! StartSendingLocalHeader(block.header)
         system.actorSelection("user/statsSender") ! MiningEnd(block.header, workerIdx, context.children.size)
         system.actorSelection("user/statsSender") ! MiningTime(System.currentTimeMillis() - startTime)
       }
