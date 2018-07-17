@@ -55,7 +55,8 @@ object EncryApp extends App with Logging {
   lazy val peerManager: ActorRef = system.actorOf(Props[PeerManager], "peerManager")
   lazy val nodeViewSynchronizer: ActorRef =
     system.actorOf(Props(classOf[EncryNodeViewSynchronizer], EncrySyncInfoMessageSpec), "nodeViewSynchronizer")
-  lazy val miner: ActorRef = system.actorOf(Props[EncryMiner].withDispatcher("mining-dispatcher"), "miner")
+  lazy val miner: ActorRef = system.actorOf(Props[EncryMiner], "miner")
+  //lazy val miner: ActorRef = system.actorOf(Props[EncryMiner].withDispatcher("mining-dispatcher"), "miner")
   val cliListener: ActorRef = system.actorOf(Props[ConsolePromptListener], "cliListener")
 
   lazy val upnp: UPnP = new UPnP(settings.network)
