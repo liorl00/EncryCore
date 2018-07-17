@@ -21,7 +21,7 @@ import scala.annotation.tailrec
 import scala.collection.immutable
 import scala.util.Try
 
-trait BlockHeaderProcessor extends Logging {
+trait BlockHeaderProcessor extends Logging { //scalastyle:ignore
 
   protected val nodeSettings: NodeSettings
   protected val timeProvider: NetworkTimeProvider
@@ -269,6 +269,7 @@ trait BlockHeaderProcessor extends Logging {
 
   def requiredDifficultyAfter(parent: EncryBlockHeader): Difficulty = {
     val parentHeight: Block.Height = parent.height
+    println(s"Calculating dificulty on height: ${parentHeight + 1}")
     val requiredHeights: Seq[Height] =
       difficultyController.getHeightsForRetargetingAt(Height @@ (parentHeight + 1))
         .ensuring(_.last == parentHeight, "Incorrect heights sequence!")

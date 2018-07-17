@@ -219,6 +219,8 @@ object EncryMiner extends Logging {
     val difficulty: Difficulty = bestHeaderOpt.map(parent => view.history.requiredDifficultyAfter(parent))
       .getOrElse(Constants.Chain.InitialDifficulty)
 
+    println(s"Calculate difficulty for new candidate and it is ${difficulty}")
+
     val candidate: CandidateBlock = CandidateBlock(bestHeaderOpt, adProof, adDigest, Constants.Chain.Version, txs, timestamp, difficulty)
 
     log.info(s"Sending candidate block with ${candidate.transactions.length - 1} transactions " +

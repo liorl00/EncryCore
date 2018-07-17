@@ -13,13 +13,21 @@ object PowLinearController {
   val PrecisionConstant: Int = 1000000000
 
   def getDifficulty(previousHeaders: Seq[(Int, EncryBlockHeader)]): Difficulty =
-    if (previousHeaders.lengthCompare(1) == 0 || previousHeaders.head._2.timestamp >= previousHeaders.last._2.timestamp)
+    if (previousHeaders.lengthCompare(1) == 0 || previousHeaders.head._2.timestamp >= previousHeaders.last._2.timestamp) {
+      println(s"Diff is: ${previousHeaders.head._2.difficulty}")
       previousHeaders.head._2.difficulty
-    else {
+    } else {
       val data: Seq[(Int, Difficulty)] = previousHeaders.sliding(2).toList.map { d =>
         val start: (Int, EncryBlockHeader) = d.head
         val end: (Int, EncryBlockHeader) = d.last
+        println(s"Start is: ${start._2.timestamp} end is: ${end._2.timestamp}")
         require(end._1 - start._1 == chainParams.EpochLength, s"Incorrect heights interval for $d")
+        println(s"end._2.requiredDifficulty: ${end._2.requiredDifficulty}")
+        println(s"chainParams.DesiredBlockInterval.toMillis: ${chainParams.DesiredBlockInterval.toMillis}")
+        println(s"chainParams.EpochLength: ${chainParams.EpochLength}")
+        println(s"common: ${end._2.requiredDifficulty * chainParams.DesiredBlockInterval.toMillis *
+          chainParams.EpochLength}")
+        println(s"Timestamp diff: ${end._2.timestamp - start._2.timestamp}")
         val diff: @@[BigInt, consensus.Difficulty.Tag] = Difficulty @@ (end._2.requiredDifficulty * chainParams.DesiredBlockInterval.toMillis *
           chainParams.EpochLength / (end._2.timestamp - start._2.timestamp))
         (end._1, diff)
