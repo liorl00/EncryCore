@@ -93,6 +93,7 @@ class EncryNodeViewHolder[StateType <: EncryState[StateType]] extends Actor with
       }
     case lt: LocallyGeneratedTransaction[EncryProposition, EncryBaseTransaction] => txModify(lt.tx)
     case lm: LocallyGeneratedModifier[EncryPersistentModifier] =>
+      println(s"Get smth with id ${Algos.encode(lm.pmod.id)} in ${sdf.format(new Date(System.currentTimeMillis()))}")
       log.info(s"Got locally generated modifier ${lm.pmod.encodedId} of type ${lm.pmod.modifierTypeId}")
       pmodModify(lm.pmod)
       if (settings.levelDb.enable) context.actorSelection("/user/modifiersHolder") ! lm

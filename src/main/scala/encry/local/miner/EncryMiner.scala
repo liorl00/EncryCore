@@ -113,7 +113,7 @@ class EncryMiner extends Actor with Logging {
       produceCandidate()
     case SemanticallySuccessfulModifier(mod: EncryBlock) if shouldStartMine(mod) =>
       if (settings.node.sendStat) system.actorSelection("user/statsSender") ! SSMmessageGet(mod.id)
-      println(s"Get ssm with ${Algos.encode(mod.id)}. Starting to prod cand in ${sdf.format(new Date(System.currentTimeMillis()))}")
+      println(s"Get ssm with2 ${Algos.encode(mod.id)}. Starting to prod cand in ${sdf.format(new Date(System.currentTimeMillis()))}")
       log.info(s"Got new block2. Starting to produce candidate on height: ${mod.header.height + 1} in ${sdf.format(new Date(System.currentTimeMillis()))}")
       self ! StartMining
     case SemanticallySuccessfulModifier(_) =>
@@ -121,7 +121,10 @@ class EncryMiner extends Actor with Logging {
 
   def receiverCandidateBlock: Receive = {
     case c: CandidateBlock => procCandidateBlock(c)
-    case cEnv: CandidateEnvelope if cEnv.c.nonEmpty => procCandidateBlock(cEnv.c.get)
+    case cEnv: CandidateEnvelope if cEnv.c.nonEmpty => {
+      println(s"Get candidate envelope in ${sdf.format(new Date(System.currentTimeMillis()))} ")
+      procCandidateBlock(cEnv.c.get)
+    }
   }
 
   override def receive: Receive = if (settings.node.mining) miningEnabled else miningDisabled
@@ -133,7 +136,7 @@ class EncryMiner extends Actor with Logging {
       unknownMessage
 
   def procCandidateBlock(c: CandidateBlock): Unit = {
-    log.info(s"Got candidate block $c in ${sdf.format(new Date(System.currentTimeMillis()))}")
+    println(s"Got candidate block $c in ${sdf.format(new Date(System.currentTimeMillis()))}")
     candidateOpt = Some(c)
     context.system.scheduler.scheduleOnce(settings.node.miningDelay, self, StartMining)
   }
@@ -182,7 +185,8 @@ class EncryMiner extends Actor with Logging {
     candidate
   }
 
-  def produceCandidate(): Unit =
+  def produceCandidate(): Unit = {
+    println(s"Starting to generate candidate in ${sdf.format(new Date(System.currentTimeMillis()))}")
     nodeViewHolder ! GetDataFromCurrentView[EncryHistory, UtxoState, EncryWallet, EncryMempool, CandidateEnvelope] { view =>
       log.info(s"Starting candidate generation in ${sdf.format(new Date(System.currentTimeMillis()))}")
       startTime = System.currentTimeMillis()
@@ -197,6 +201,8 @@ class EncryMiner extends Actor with Logging {
       }
       candidate
     }
+    println(s"End generation in ${sdf.format(new Date(System.currentTimeMillis()))}")
+  }
 }
 
 object EncryMiner extends Logging {
