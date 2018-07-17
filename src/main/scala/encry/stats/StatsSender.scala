@@ -24,6 +24,8 @@ class StatsSender extends Actor with Logging {
 
   var startTimeOfBlockApplying: Map[String, Long] = Map()
 
+  var ssmMessageSendingTime: Map[String, Long] = Map()
+
   influxDB.setRetentionPolicy("autogen")
 
   var modifiersToApply: Map[String, (ModifierTypeId, Long)] = Map()
@@ -79,10 +81,20 @@ class StatsSender extends Actor with Logging {
     case StartSendingLocalHeader(header: EncryBlockHeader) =>
       startTimeOfBlockApplying += Algos.encode(header.id) -> System.currentTimeMillis()
 
+    case SSMmessageStartSending(modId: ModifierId) =>
+      ssmMessageSendingTime += Algos.encode(modId) -> System.currentTimeMillis()
+
+    case SSMmessageGet(modId: ModifierId) =>
+      ssmMessageSendingTime.get(Algos.encode(modId))foreach { startTime =>
+        influxDB.write(8189, s"ssmTime,nodeName=${settings.network.nodeName} value=${System.currentTimeMillis() - startTime}")
+        startTimeOfBlockApplying -= Algos.encode(modId)
+      }
+
     case EndBlockApplying(block: EncryBlock) =>
-      startTimeOfBlockApplying.get(Algos.encode(block.id)).foreach(startTime =>
+      startTimeOfBlockApplying.get(Algos.encode(block.id)).foreach { startTime =>
         influxDB.write(8189, s"blockApplyingTime,nodeName=${settings.network.nodeName} value=${System.currentTimeMillis() - startTime}")
-      )
+        startTimeOfBlockApplying -= Algos.encode(block.id)
+      }
 
     case SendDownloadRequest(modifierTypeId: ModifierTypeId, modifiers: Seq[ModifierId]) =>
       modifiersToDownload = modifiersToDownload ++ modifiers.map(mod => (Algos.encode(mod), (modifierTypeId, System.currentTimeMillis())))
@@ -127,4 +139,8 @@ object StatsSender {
   case class StartSendingLocalHeader(header: EncryBlockHeader)
 
   case class EndBlockApplying(block: EncryBlock)
+
+  case class SSMmessageStartSending(modifierId: ModifierId)
+
+  case class SSMmessageGet(modifierId: ModifierId)
 }

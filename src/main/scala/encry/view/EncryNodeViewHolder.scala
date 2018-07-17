@@ -182,8 +182,10 @@ class EncryNodeViewHolder[StateType <: EncryState[StateType]] extends Actor with
               modToApply match {
 
                 case block: EncryBlock =>
-                  if (settings.node.sendStat)
+                  if (settings.node.sendStat) {
                     system.actorSelection("user/statsSender") ! EndBlockApplying(block)
+                    system.actorSelection("user/statsSender") ! SSMmessageStartSending(block.id)
+                  }
                 case _ =>
               }
               UpdateInformation(newHis, stateAfterApply, None, None, u.suffix :+ modToApply)
