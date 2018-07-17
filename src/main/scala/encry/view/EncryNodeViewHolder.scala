@@ -105,7 +105,7 @@ class EncryNodeViewHolder[StateType <: EncryState[StateType]] extends Actor with
       if (state) sender() ! ChangedState(nodeView.state)
       if (mempool) sender() ! ChangedMempool(nodeView.mempool)
     case ProduceNextCandidate =>
-      log.info(s"Starting candidate generation in ${sdf.format(new Date(System.currentTimeMillis()))}")
+      println(s"Starting candidate generation in ${sdf.format(new Date(System.currentTimeMillis()))}")
       var startTime = System.currentTimeMillis()
 //      if (settings.node.sendStat) {
 //        system.actorSelection("user/statsSender") ! SleepTime(System.currentTimeMillis() - sleepTime)
@@ -117,6 +117,7 @@ class EncryNodeViewHolder[StateType <: EncryState[StateType]] extends Actor with
       if (settings.node.sendStat) {
         system.actorSelection("user/statsSender") ! CandidateProducingTime(System.currentTimeMillis() - startTime)
       }
+      println(s"End in ${sdf.format(new Date(System.currentTimeMillis()))}")
       sender ! candidate
     case CompareViews(peer, modifierTypeId, modifierIds) =>
       val ids: Seq[ModifierId] = modifierTypeId match {

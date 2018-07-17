@@ -180,6 +180,11 @@ object EncryMiner extends Logging {
 
   def createCandidate(view: CurrentView[EncryHistory, UtxoState, EncryWallet, EncryMempool],
                       bestHeaderOpt: Option[EncryBlockHeader]): CandidateBlock = {
+
+    val sdf = new SimpleDateFormat("HH:mm:ss")
+
+    println(s"Starting to create candidate in: ${sdf.format(new Date(System.currentTimeMillis()))}")
+
     val timestamp: Time = timeProvider.time()
     val height: Height = Height @@ (bestHeaderOpt.map(_.height).getOrElse(Constants.Chain.PreGenesisHeight) + 1)
 
@@ -218,6 +223,8 @@ object EncryMiner extends Logging {
 
     log.info(s"Sending candidate block with ${candidate.transactions.length - 1} transactions " +
       s"and 1 coinbase for height $height")
+
+    println(s"End creation in: ${sdf.format(new Date(System.currentTimeMillis()))}")
 
     candidate
   }
