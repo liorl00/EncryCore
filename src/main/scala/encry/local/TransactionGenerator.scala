@@ -1,5 +1,8 @@
 package encry.local
 
+import java.text.SimpleDateFormat
+import java.util.Date
+
 import akka.actor.Actor
 import encry.EncryApp._
 import encry.account.Address
@@ -25,6 +28,7 @@ class TransactionGenerator extends Actor with Logging {
   var isActive: Boolean = false
   var limit: Int = settings.testing.limitPerEpoch
   var walletDataOpt: Option[WalletData] = None
+  val sdf = new SimpleDateFormat("HH:mm:ss")
 
   val noLimitMode: Boolean = settings.testing.limitPerEpoch < 0
 
@@ -53,6 +57,7 @@ class TransactionGenerator extends Actor with Logging {
       walletDataOpt match {
         // Generate new transaction if wallet contains enough coins and transaction limit is not exhausted.
         case Some(walletData) if walletData.boxes.map(_.amount).sum >= (amountD + minimalFeeD) && (limit > 0 || noLimitMode) =>
+          println(s"Generating new tx in ${sdf.format(new Date(System.currentTimeMillis()))}")
           val tx: EncryTransaction = createTransaction(walletData)
           val leftBoxes: Seq[AssetBox] = walletData.boxes.filterNot(bx => tx.inputs.map(_.boxId).contains(bx.id))
           walletDataOpt = Some(walletData.copy(boxes = leftBoxes))

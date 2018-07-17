@@ -94,7 +94,9 @@ class EncryNodeViewHolder[StateType <: EncryState[StateType]] extends Actor with
         log.info(s"Cache after(${modifiersCache.size})")
         //modifiersCache.foreach(modInfo => logger.info(modInfo._2.modifierTypeId + "-" + Algos.encode(modInfo._2.id)))
       }
-    case lt: LocallyGeneratedTransaction[EncryProposition, EncryBaseTransaction] => txModify(lt.tx)
+    case lt: LocallyGeneratedTransaction[EncryProposition, EncryBaseTransaction] =>
+      println(s"Get tx in ${sdf.format(new Date(System.currentTimeMillis()))}")
+      txModify(lt.tx)
     case lm: LocallyGeneratedModifier[EncryPersistentModifier] =>
       println(s"Get smth with id ${Algos.encode(lm.pmod.id)} in ${sdf.format(new Date(System.currentTimeMillis()))}")
       log.info(s"Got locally generated modifier ${lm.pmod.encodedId} of type ${lm.pmod.modifierTypeId}")
