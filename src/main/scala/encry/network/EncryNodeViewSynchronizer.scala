@@ -97,7 +97,7 @@ class EncryNodeViewSynchronizer(syncInfoSpec: EncrySyncInfoMessageSpec.type) ext
     case DataFromPeer(spec, data: ModifiersData@unchecked, remote) if spec.messageCode == ModifiersSpec.messageCode =>
       log.info(s"Get modifiers from ${remote.socketAddress} with modTypeID: ${data._1} and modifiers: " +
         s"${data._2.keys.foldLeft("|")((str, id) => str + "|" + Algos.encode(id))}")
-      deliveryManager ! DataFromPeer(spec, data: ModifiersData@unchecked, remote)
+      //deliveryManager ! DataFromPeer(spec, data: ModifiersData@unchecked, remote)
     case RequestFromLocal(peer, modifierTypeId, modifierIds) =>
       deliveryManager ! RequestFromLocal(peer, modifierTypeId, modifierIds)
     case StartMining => deliveryManager ! StartMining
