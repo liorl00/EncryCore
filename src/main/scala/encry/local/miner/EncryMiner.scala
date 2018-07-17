@@ -14,7 +14,7 @@ import encry.modifiers.mempool.{EncryBaseTransaction, EncryTransaction, Transact
 import encry.modifiers.state.box.AssetBox
 import encry.modifiers.state.box.Box.Amount
 import encry.network.EncryNodeViewSynchronizer.ReceivableMessages.SemanticallySuccessfulModifier
-import encry.settings.Constants
+import encry.settings.{Algos, Constants}
 import encry.stats.StatsSender._
 import encry.utils.Logging
 import encry.utils.NetworkTime.Time
@@ -62,7 +62,7 @@ class EncryMiner extends Actor with Logging {
     case StartMining if context.children.nonEmpty =>
       candidateOpt match {
         case Some(candidateBlock) =>
-          log.info(s"Start mining in ${sdf.format(new Date(System.currentTimeMillis()))}")
+          println(s"Start mining in ${sdf.format(new Date(System.currentTimeMillis()))}")
           context.children.foreach(_ ! NextChallenge(candidateBlock))
         case None => produceCandidate()
       }
@@ -78,6 +78,7 @@ class EncryMiner extends Actor with Logging {
       context.become(miningDisabled)
 
     case MinedBlock(block, workerIdx) if candidateOpt.exists(_.stateRoot sameElements block.header.stateRoot) =>
+      println(s"End mining in ${sdf.format(new Date(System.currentTimeMillis()))} with block: ${Algos.encode(block.id)}")
       nodeViewHolder ! LocallyGeneratedModifier(block.header)
       nodeViewHolder ! LocallyGeneratedModifier(block.payload)
       if (settings.node.sendStat) {
@@ -107,10 +108,12 @@ class EncryMiner extends Actor with Logging {
   def receiveSemanticallySuccessfulModifier: Receive = {
     case SemanticallySuccessfulModifier(mod: EncryBlock) if context.children.nonEmpty && needNewCandidate(mod) =>
       if (settings.node.sendStat) system.actorSelection("user/statsSender") ! SSMmessageGet(mod.id)
+      println(s"Get ssm with ${Algos.encode(mod.id)}. Starting to prod cand in ${sdf.format(new Date(System.currentTimeMillis()))}")
       log.info(s"Got new block. Starting to produce candidate on height: ${mod.header.height + 1} in ${sdf.format(new Date(System.currentTimeMillis()))}")
       produceCandidate()
     case SemanticallySuccessfulModifier(mod: EncryBlock) if shouldStartMine(mod) =>
       if (settings.node.sendStat) system.actorSelection("user/statsSender") ! SSMmessageGet(mod.id)
+      println(s"Get ssm with ${Algos.encode(mod.id)}. Starting to prod cand in ${sdf.format(new Date(System.currentTimeMillis()))}")
       log.info(s"Got new block2. Starting to produce candidate on height: ${mod.header.height + 1} in ${sdf.format(new Date(System.currentTimeMillis()))}")
       self ! StartMining
     case SemanticallySuccessfulModifier(_) =>

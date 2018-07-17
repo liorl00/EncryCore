@@ -1,6 +1,8 @@
 package encry.view
 
 import java.io.File
+import java.text.SimpleDateFormat
+import java.util.Date
 
 import akka.actor.{Actor, Props}
 import encry.EncryApp._
@@ -37,6 +39,8 @@ import scala.util.{Failure, Success, Try}
 class EncryNodeViewHolder[StateType <: EncryState[StateType]] extends Actor with Logging {
 
   case class NodeView(history: EncryHistory, state: StateType, wallet: EncryWallet, mempool: EncryMempool)
+
+  val sdf = new SimpleDateFormat("HH:mm:ss")
 
   var nodeView: NodeView = restoreState().getOrElse(genesisState)
   var modifiersCache: EncryModifiersCache = EncryModifiersCache(1000)
@@ -180,8 +184,8 @@ class EncryNodeViewHolder[StateType <: EncryState[StateType]] extends Actor with
               val newHis: EncryHistory = history.reportModifierIsValid(modToApply)
               context.system.eventStream.publish(SemanticallySuccessfulModifier(modToApply))
               modToApply match {
-
                 case block: EncryBlock =>
+                  println(s"Get new block: ${Algos.encode(block.id)} at height ${block.header.height} and send to miner ssm in ${sdf.format(new Date(System.currentTimeMillis())}")
                   if (settings.node.sendStat) {
                     system.actorSelection("user/statsSender") ! EndBlockApplying(block)
                     system.actorSelection("user/statsSender") ! SSMmessageStartSending(block.id)
