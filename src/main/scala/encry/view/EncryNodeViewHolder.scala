@@ -115,7 +115,7 @@ class EncryNodeViewHolder[StateType <: EncryState[StateType]] extends Actor with
       //      }
       val bestHeaderOpt: Option[EncryBlockHeader] = nodeView.history.bestBlockOpt.map(_.header)
       val candidate = if (bestHeaderOpt.isDefined || settings.node.offlineGeneration)
-        CandidateEnvelope.fromCandidate(EncryMiner.createCandidate(CurrentView(nodeView.history, nodeView.state.asInstanceOf[UtxoState], nodeView.wallet, nodeView.mempool), bestHeaderOpt))
+        CandidateEnvelope.fromCandidate(EncryMiner.createCandidate(CurrentView(nodeView.history, nodeView.state.asInstanceOf[UtxoState], nodeView.wallet, nodeView.mempool), nodeView.history.bestHeaderOpt))
       else CandidateEnvelope.empty
       if (settings.node.sendStat) {
         system.actorSelection("user/statsSender") ! CandidateProducingTime(System.currentTimeMillis() - startTime)
