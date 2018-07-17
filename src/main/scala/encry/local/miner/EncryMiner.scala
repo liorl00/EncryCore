@@ -216,8 +216,15 @@ object EncryMiner extends Logging {
     val (adProof: SerializedAdProof, adDigest: ADDigest) = view.state.generateProofs(txs)
       .getOrElse(throw new Exception("ADProof generation failed"))
 
-    val difficulty: Difficulty = bestHeaderOpt.map(parent => view.history.requiredDifficultyAfter(parent))
-      .getOrElse(Constants.Chain.InitialDifficulty)
+    val difficulty: Difficulty = bestHeaderOpt.map(parent => {
+      val diff =view.history.requiredDifficultyAfter(parent)
+      println(diff)
+      diff
+    })
+      .getOrElse({
+        println("In get or else")
+        Constants.Chain.InitialDifficulty
+      })
 
     println(bestHeaderOpt)
 
