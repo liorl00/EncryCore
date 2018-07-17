@@ -5,6 +5,7 @@ import java.text.SimpleDateFormat
 import java.util.Date
 
 import akka.actor.{Actor, Props}
+import akka.event.LoggingReceive
 import encry.EncryApp._
 import encry.consensus.History.ProgressInfo
 import encry.local.miner.EncryMiner
@@ -64,72 +65,68 @@ class EncryNodeViewHolder[StateType <: EncryState[StateType]] extends Actor with
     nodeView.state.closeStorage()
   }
 
-  override def receive: Receive = {
-    case message =>
-      println(s"Get message: $message in ${sdf.format(new Date(System.currentTimeMillis()))}")
-      message match {
-        case ModifiersFromRemote(modifierTypeId, remoteObjects) =>
-          modifierSerializers.get(modifierTypeId).foreach { companion =>
-            remoteObjects.flatMap(r => companion.parseBytes(r).toOption).foreach {
-              case tx: EncryBaseTransaction@unchecked if tx.modifierTypeId == Transaction.ModifierTypeId => txModify(tx)
-              case pmod: EncryPersistentModifier@unchecked =>
-                if (nodeView.history.contains(pmod.id) || modifiersCache.contains(key(pmod.id)))
-                  logWarn(s"Received modifier ${pmod.encodedId} that is already in history")
-                else {
-                  modifiersCache.put(key(pmod.id), pmod)
-                  if (settings.levelDb.enable) context.actorSelection("/user/modifiersHolder") ! RequestedModifiers(modifierTypeId, Seq(pmod))
-                }
+  override def receive: Receive = LoggingReceive {
+    case ModifiersFromRemote(modifierTypeId, remoteObjects) =>
+      modifierSerializers.get(modifierTypeId).foreach { companion =>
+        remoteObjects.flatMap(r => companion.parseBytes(r).toOption).foreach {
+          case tx: EncryBaseTransaction@unchecked if tx.modifierTypeId == Transaction.ModifierTypeId => txModify(tx)
+          case pmod: EncryPersistentModifier@unchecked =>
+            if (nodeView.history.contains(pmod.id) || modifiersCache.contains(key(pmod.id)))
+              logWarn(s"Received modifier ${pmod.encodedId} that is already in history")
+            else {
+              modifiersCache.put(key(pmod.id), pmod)
+              if (settings.levelDb.enable) context.actorSelection("/user/modifiersHolder") ! RequestedModifiers(modifierTypeId, Seq(pmod))
             }
-            log.info(s"Cache before(${modifiersCache.size})")
+        }
+        log.info(s"Cache before(${modifiersCache.size})")
 
-            var applied: Boolean = false
-            do {
-              modifiersCache.popCandidate(nodeView.history) match {
-                case Some(mod) =>
-                  pmodModify(mod)
-                  applied = true
-                case None =>
-                  applied = false
-              }
-            } while (applied)
+        var applied: Boolean = false
+        do {
+          modifiersCache.popCandidate(nodeView.history) match {
+            case Some(mod) =>
+              pmodModify(mod)
+              applied = true
+            case None =>
+              applied = false
+          }
+        } while (applied)
 
-            log.info(s"Cache after(${modifiersCache.size})")
-            //modifiersCache.foreach(modInfo => logger.info(modInfo._2.modifierTypeId + "-" + Algos.encode(modInfo._2.id)))
-          }
-        case lt: LocallyGeneratedTransaction[EncryProposition, EncryBaseTransaction] => txModify(lt.tx)
-        case lm: LocallyGeneratedModifier[EncryPersistentModifier] =>
-          println(s"Get smth with id ${Algos.encode(lm.pmod.id)} in ${sdf.format(new Date(System.currentTimeMillis()))}")
-          log.info(s"Got locally generated modifier ${lm.pmod.encodedId} of type ${lm.pmod.modifierTypeId}")
-          pmodModify(lm.pmod)
-          if (settings.levelDb.enable) context.actorSelection("/user/modifiersHolder") ! lm
-        case GetDataFromCurrentView(f) => sender() ! f(CurrentView(nodeView.history, nodeView.state, nodeView.wallet, nodeView.mempool))
-        case GetNodeViewChanges(history, state, vault, mempool) =>
-          if (history) sender() ! ChangedHistory(nodeView.history)
-          if (state) sender() ! ChangedState(nodeView.state)
-          if (mempool) sender() ! ChangedMempool(nodeView.mempool)
-        case ProduceNextCandidate =>
-          println(s"Starting candidate generation in ${sdf.format(new Date(System.currentTimeMillis()))}")
-          var startTime = System.currentTimeMillis()
-          //      if (settings.node.sendStat) {
-          //        system.actorSelection("user/statsSender") ! SleepTime(System.currentTimeMillis() - sleepTime)
-          //      }
-          val bestHeaderOpt: Option[EncryBlockHeader] = nodeView.history.bestBlockOpt.map(_.header)
-          val candidate = if (bestHeaderOpt.isDefined || settings.node.offlineGeneration)
-            CandidateEnvelope.fromCandidate(EncryMiner.createCandidate(CurrentView(nodeView.history, nodeView.state.asInstanceOf[UtxoState], nodeView.wallet, nodeView.mempool), bestHeaderOpt))
-          else CandidateEnvelope.empty
-          if (settings.node.sendStat) {
-            system.actorSelection("user/statsSender") ! CandidateProducingTime(System.currentTimeMillis() - startTime)
-          }
-          println(s"End in ${sdf.format(new Date(System.currentTimeMillis()))}")
-          sender ! candidate
-        case CompareViews(peer, modifierTypeId, modifierIds) =>
-          val ids: Seq[ModifierId] = modifierTypeId match {
-            case typeId: ModifierTypeId if typeId == Transaction.ModifierTypeId => nodeView.mempool.notIn(modifierIds)
-            case _ => modifierIds.filterNot(mid => nodeView.history.contains(mid) || modifiersCache.contains(key(mid)))
-          }
-          sender() ! RequestFromLocal(peer, modifierTypeId, ids)
-        case a: Any => logError("Strange input: " + a)
+        log.info(s"Cache after(${modifiersCache.size})")
+        //modifiersCache.foreach(modInfo => logger.info(modInfo._2.modifierTypeId + "-" + Algos.encode(modInfo._2.id)))
       }
+    case lt: LocallyGeneratedTransaction[EncryProposition, EncryBaseTransaction] => txModify(lt.tx)
+    case lm: LocallyGeneratedModifier[EncryPersistentModifier] =>
+      println(s"Get smth with id ${Algos.encode(lm.pmod.id)} in ${sdf.format(new Date(System.currentTimeMillis()))}")
+      log.info(s"Got locally generated modifier ${lm.pmod.encodedId} of type ${lm.pmod.modifierTypeId}")
+      pmodModify(lm.pmod)
+      if (settings.levelDb.enable) context.actorSelection("/user/modifiersHolder") ! lm
+    case GetDataFromCurrentView(f) => sender() ! f(CurrentView(nodeView.history, nodeView.state, nodeView.wallet, nodeView.mempool))
+    case GetNodeViewChanges(history, state, vault, mempool) =>
+      if (history) sender() ! ChangedHistory(nodeView.history)
+      if (state) sender() ! ChangedState(nodeView.state)
+      if (mempool) sender() ! ChangedMempool(nodeView.mempool)
+    case ProduceNextCandidate =>
+      println(s"Starting candidate generation in ${sdf.format(new Date(System.currentTimeMillis()))}")
+      var startTime = System.currentTimeMillis()
+      //      if (settings.node.sendStat) {
+      //        system.actorSelection("user/statsSender") ! SleepTime(System.currentTimeMillis() - sleepTime)
+      //      }
+      val bestHeaderOpt: Option[EncryBlockHeader] = nodeView.history.bestBlockOpt.map(_.header)
+      val candidate = if (bestHeaderOpt.isDefined || settings.node.offlineGeneration)
+        CandidateEnvelope.fromCandidate(EncryMiner.createCandidate(CurrentView(nodeView.history, nodeView.state.asInstanceOf[UtxoState], nodeView.wallet, nodeView.mempool), bestHeaderOpt))
+      else CandidateEnvelope.empty
+      if (settings.node.sendStat) {
+        system.actorSelection("user/statsSender") ! CandidateProducingTime(System.currentTimeMillis() - startTime)
+      }
+      println(s"End in ${sdf.format(new Date(System.currentTimeMillis()))}")
+      sender ! candidate
+    case CompareViews(peer, modifierTypeId, modifierIds) =>
+      val ids: Seq[ModifierId] = modifierTypeId match {
+        case typeId: ModifierTypeId if typeId == Transaction.ModifierTypeId => nodeView.mempool.notIn(modifierIds)
+        case _ => modifierIds.filterNot(mid => nodeView.history.contains(mid) || modifiersCache.contains(key(mid)))
+      }
+      sender() ! RequestFromLocal(peer, modifierTypeId, ids)
+    case a: Any => logError("Strange input: " + a)
   }
 
   def key(id: ModifierId): mutable.WrappedArray.ofByte = new mutable.WrappedArray.ofByte(id)
