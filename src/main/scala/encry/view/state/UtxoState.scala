@@ -162,6 +162,8 @@ class UtxoState(override val persistentProver: PersistentBatchAVLProver[Digest32
   def validate(tx: BaseTransaction, allowedOutputDelta: Amount = 0L): Try[Unit] =
     tx.semanticValidity.map { _: Unit =>
 
+      log.info(s"Starting to validate tx: ${Algos.encode(tx.id)}")
+
       val context: Context = Context(tx, EncryStateView(height, lastBlockTimestamp, rootHash))
 
       val bxs: IndexedSeq[EncryBaseBox] = tx.inputs.flatMap(input => persistentProver.unauthenticatedLookup(input.boxId)
@@ -178,11 +180,13 @@ class UtxoState(override val persistentProver: PersistentBatchAVLProver[Digest32
 
       val validBalance: Boolean = {
         val debitB: Map[TokenId, Amount] = BalanceCalculator.balanceSheet(bxs)
+        log.info(s"Debit of this tx is: ${debitB.map(tokenInfo => Algos.encode(tokenInfo._1) + ":" + tokenInfo._2).mkString(",")}")
         val creditB: Map[TokenId, Amount] = {
           val balanceSheet: Map[TokenId, Amount] = BalanceCalculator.balanceSheet(tx.newBoxes, excludeTokenIssuance = true)
           val intrinsicBalance: Amount = balanceSheet.getOrElse(Constants.IntrinsicTokenId, 0L)
           balanceSheet.updated(Constants.IntrinsicTokenId, intrinsicBalance + tx.fee)
         }
+        log.info(s"Credit of this tx is: ${creditB.map(tokenInfo => Algos.encode(tokenInfo._1) + ":" + tokenInfo._2).mkString(",")}")
         creditB.forall { case (tokenId, amount) =>
           if (ByteArrayWrapper(tokenId) == ByteArrayWrapper(Constants.IntrinsicTokenId))
             debitB.getOrElse(tokenId, 0L) + allowedOutputDelta >= amount
