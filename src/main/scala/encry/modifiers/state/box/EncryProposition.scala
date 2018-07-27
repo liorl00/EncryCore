@@ -5,6 +5,7 @@ import encry.modifiers.mempool.Proof
 import encry.modifiers.mempool.regcontract.{AccountLockedContract, HeightLockedContract, OpenContract}
 import encry.modifiers.serialization.Serializer
 import encry.settings.{Algos, Constants}
+import encry.utils.Logging
 import encry.view.history.Height
 import encry.view.state.Proposition
 import io.circe.Encoder
@@ -17,13 +18,14 @@ import org.encryfoundation.prismlang.evaluator.Evaluator
 
 import scala.util.{Failure, Success, Try}
 
-case class EncryProposition(contractHash: ContractHash) extends Proposition {
+case class EncryProposition(contractHash: ContractHash) extends Proposition with Logging{
 
   override type M = EncryProposition
 
   override def serializer: Serializer[EncryProposition] = EncryPropositionSerializer
 
-  def canUnlock(ctx: Context, contract: CompiledContract, proofs: Seq[Proof]): Boolean =
+  def canUnlock(ctx: Context, contract: CompiledContract, proofs: Seq[Proof]): Boolean = {
+    log.info(s"Going to check hash: contractHash = ${Algos.encode(contractHash)}. contract.hash = ${Algos.encode(contract.hash)}. Result is = ${sameHash(contractHash, contract.hash)}")
     if (sameHash(contractHash, contract.hash)) {
       val env: List[(Option[String], PValue)] =
         if (contract.args.isEmpty) List.empty
@@ -31,8 +33,12 @@ case class EncryProposition(contractHash: ContractHash) extends Proposition {
       val args: List[(String, PValue)] = contract.args.map { case (name, tpe) =>
         env.find(_._1.contains(name)).orElse(env.find(_._2.tpe == tpe)).map(elt => name -> elt._2)
           .getOrElse(throw new Exception("Not enough arguments for contact")) }
-      Evaluator.initializedWith(args).eval[Boolean](contract.script)
+      val result = Evaluator.initializedWith(args).eval[Boolean](contract.script)
+      log.info(s"Going to init contract. Result: $result")
+      result
     } else false
+  }
+
 
   def sameHash(h1: Array[Byte], h2: Array[Byte]): Boolean = ByteArrayWrapper(h1) == ByteArrayWrapper(h2)
 }
