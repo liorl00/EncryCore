@@ -139,16 +139,23 @@ class EncryMiner extends Actor with Logging {
 
     // `txsToPut` - valid, non-conflicting txs with respect to their fee amount.
     // `txsToDrop` - invalidated txs to be dropped from mempool.
+
+    log.info(s"In tx we have: ${view.pool.takeAll.map(tx => Algos.encode(tx.id)).mkString(",")}")
+
     val (txsToPut: Seq[BaseTransaction], txsToDrop: Seq[BaseTransaction], _) = view.pool.takeAll.toSeq.sortBy(_.fee).reverse
       .foldLeft((Seq[BaseTransaction](), Seq[BaseTransaction](), Set[ByteArrayWrapper]())) {
         case ((validTxs, invalidTxs, bxsAcc), tx) =>
           val bxsRaw: IndexedSeq[ByteArrayWrapper] = tx.inputs.map(u => ByteArrayWrapper(u.boxId))
           if ((validTxs.map(_.length).sum + tx.length) <= Constants.BlockMaxSize - 124) {
+            log.info(s"Going to validate tx: ${Algos.encode(tx.id)} and result is: ${view.state.validate(tx)}")
             if (view.state.validate(tx).isSuccess && bxsRaw.forall(k => !bxsAcc.contains(k)) && bxsRaw.size == bxsRaw.toSet.size)
               (validTxs :+ tx, invalidTxs, bxsAcc ++ bxsRaw)
             else (validTxs, invalidTxs :+ tx, bxsAcc)
           } else (validTxs, invalidTxs, bxsAcc)
       }
+
+    log.info(s"After filter we have: ${txsToPut.map(tx => Algos.encode(tx.id)).mkString(",")}")
+
     // Remove stateful-invalid txs from mempool.
     view.pool.removeAsync(txsToDrop)
 
