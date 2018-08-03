@@ -17,6 +17,7 @@ class EncryMiningWorker(myIdx: Int, numberOfWorkers: Int) extends Actor with Log
 
   val sdf: SimpleDateFormat = new SimpleDateFormat("HH:mm:ss")
   var challengeStartTime: Date = new Date(System.currentTimeMillis())
+  var currentCandidate: Option[CandidateBlock] = None
 
   override def receive: Receive = miningPaused
 
@@ -31,7 +32,7 @@ class EncryMiningWorker(myIdx: Int, numberOfWorkers: Int) extends Actor with Log
       ConsensusSchemeReaders.consensusScheme.verifyCandidate(candidate, nonce)
         .fold({
           log.info(s"Send to self: ${myIdx} with nonce: ${nonce + 1}")
-          self ! MineBlock(candidate, nonce + 1)
+          if (currentCandidate.exists(_.stateRoot == candidate.stateRoot)) self ! MineBlock(candidate, nonce + 1)
         }) { block =>
           log.info(s"New block is found: $block on worker $self at " +
             s"${sdf.format(new Date(System.currentTimeMillis()))}. Iter qty: ${nonce - initialNonce + 1}")
@@ -54,6 +55,7 @@ class EncryMiningWorker(myIdx: Int, numberOfWorkers: Int) extends Actor with Log
   def miningPaused: Receive = {
     case NextChallenge(candidate: CandidateBlock) =>
       challengeStartTime = new Date(System.currentTimeMillis())
+      currentCandidate = Some(candidate)
       context.become(miningInProgress)
       log.info(s"Start challenge on worker: $myIdx at height " +
         s"${candidate.parentOpt.map(_.height + 1).getOrElse(Constants.Chain.PreGenesisHeight.toString)} at ${sdf.format(challengeStartTime)}")
