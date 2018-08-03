@@ -8,6 +8,7 @@ import encry.consensus.{CandidateBlock, ConsensusSchemeReaders}
 import encry.local.miner.EncryMiner.MinedBlock
 import encry.local.miner.EncryMiningWorker.{DropChallenge, MineBlock, NextChallenge, Ping}
 import encry.utils.Logging
+import scala.concurrent.duration._
 import java.text.SimpleDateFormat
 
 import encry.settings.Constants
@@ -18,6 +19,9 @@ class EncryMiningWorker(myIdx: Int, numberOfWorkers: Int) extends Actor with Log
   var challengeStartTime: Date = new Date(System.currentTimeMillis())
 
   override def receive: Receive = miningPaused
+
+  override def preStart(): Unit =
+    context.system.scheduler.schedule(20.seconds, 10.second)(self ! Ping)
 
   def miningInProgress: Receive = {
     case MineBlock(candidate: CandidateBlock, nonce: Long) =>
