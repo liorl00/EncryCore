@@ -2,7 +2,8 @@ package encry.local.miner
 
 import java.text.SimpleDateFormat
 import java.util.Date
-import akka.actor.{Actor, Props}
+
+import akka.actor.{Actor, Kill, Props}
 import encry.EncryApp._
 import encry.consensus._
 import encry.crypto.PrivateKey25519
@@ -26,6 +27,7 @@ import io.circe.syntax._
 import io.circe.{Encoder, Json}
 import io.iohk.iodb.ByteArrayWrapper
 import scorex.crypto.authds.{ADDigest, SerializedAdProof}
+
 import scala.collection._
 
 class EncryMiner extends Actor with Logging {
@@ -91,7 +93,7 @@ class EncryMiner extends Actor with Logging {
       sleepTime = System.currentTimeMillis()
       log.info(s"Set sleep time to: ${dateFormat.format(new Date(sleepTime))}")
       log.info("Send to children message to drop challenge")
-      context.children.foreach(context.stop)
+      context.children.foreach(_ ! DropChallenge)
     case GetMinerStatus => sender ! MinerStatus(context.children.nonEmpty, candidateOpt)
     case message => log.info(s"!!!Get orp block: $message")
   }
