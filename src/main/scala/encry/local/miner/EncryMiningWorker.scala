@@ -41,6 +41,13 @@ class EncryMiningWorker(myIdx: Int, numberOfWorkers: Int) extends Actor with Log
     case DropChallenge =>
       log.info(s"Paused mining on worker: $myIdx")
       context.become(miningPaused)
+    case NextChallenge(candidate: CandidateBlock) =>
+      challengeStartTime = new Date(System.currentTimeMillis())
+      context.become(miningInProgress)
+      log.info(s"Start challenge on worker: $myIdx at height " +
+        s"${candidate.parentOpt.map(_.height + 1).getOrElse(Constants.Chain.PreGenesisHeight.toString)} at ${sdf.format(challengeStartTime)}")
+      log.info(s"Send to self mined block with nonce: ${Long.MaxValue / numberOfWorkers * myIdx}")
+      self ! MineBlock(candidate, Long.MaxValue / numberOfWorkers * myIdx)
     case Ping => log.info(s"Worker $myIdx is working")
   }
 
