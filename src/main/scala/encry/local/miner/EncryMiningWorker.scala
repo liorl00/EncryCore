@@ -10,7 +10,7 @@ import encry.local.miner.EncryMiningWorker.{DropChallenge, MineBlock, NextChalle
 import encry.utils.Logging
 import scala.concurrent.duration._
 import java.text.SimpleDateFormat
-
+import scala.concurrent.ExecutionContext.Implicits.global
 import encry.settings.Constants
 
 class EncryMiningWorker(myIdx: Int, numberOfWorkers: Int) extends Actor with Logging {
