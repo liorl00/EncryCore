@@ -91,9 +91,9 @@ class EncryMiner extends Actor with Logging {
       sleepTime = System.currentTimeMillis()
       log.info(s"Set sleep time to: ${dateFormat.format(new Date(sleepTime))}")
       log.info("Send to children message to drop challenge")
-      context.children.foreach(_ ! DropChallenge)
+      context.children.foreach(context.stop)
     case GetMinerStatus => sender ! MinerStatus(context.children.nonEmpty, candidateOpt)
-    case _ =>
+    case message => log.info(s"!!!Get orp block: $message")
   }
 
   def miningDisabled: Receive = {
@@ -102,6 +102,7 @@ class EncryMiner extends Actor with Logging {
       context.become(miningEnabled)
       self ! StartMining
     case GetMinerStatus => sender ! MinerStatus(context.children.nonEmpty, candidateOpt)
+    case message => log.info(s"????Get orp block: $message")
   }
 
   def receiveSemanticallySuccessfulModifier: Receive = {

@@ -21,14 +21,21 @@ class EncryMiningWorker(myIdx: Int, numberOfWorkers: Int) extends Actor with Log
     case MineBlock(candidate: CandidateBlock, nonce: Long) =>
       val initialNonce: Long = Long.MaxValue / numberOfWorkers * myIdx
       log.info(s"Trying nonce: $nonce. Start nonce is: $initialNonce. " +
-        s"Iter qty: ${nonce - initialNonce + 1} on worker: $myIdx with diff: ${candidate.difficulty}")
+        s"Iter qty: ${nonce - initialNonce + 1} on worker: $myIdx with diff: ${candidate.difficulty} at height: ${candidate.parentOpt.map(_.height + 1).getOrElse(Constants.Chain.PreGenesisHeight.toString)}")
       ConsensusSchemeReaders.consensusScheme.verifyCandidate(candidate, nonce)
-        .fold(self ! MineBlock(candidate, nonce + 1)) { block =>
+        .fold({
+          log.info(s"Send to self: ${myIdx} with nonce: ${nonce + 1}")
+          self ! MineBlock(candidate, nonce + 1)
+        }) { block =>
           log.info(s"New block is found: $block on worker $self at " +
             s"${sdf.format(new Date(System.currentTimeMillis()))}. Iter qty: ${nonce - initialNonce + 1}")
-          miner ! MinedBlock(block, myIdx)
+          log.info(s"Send to miner block: ${block.dataString}")
+          context.parent ! MinedBlock(block, myIdx)
         }
-    case DropChallenge => context.become(miningPaused)
+    case DropChallenge => {
+      log.info(s"Paused mining on worker: $myIdx")
+      context.become(miningPaused)
+    }
   }
 
   def miningPaused: Receive = {
@@ -37,8 +44,9 @@ class EncryMiningWorker(myIdx: Int, numberOfWorkers: Int) extends Actor with Log
       context.become(miningInProgress)
       log.info(s"Start challenge on worker: $myIdx at height " +
         s"${candidate.parentOpt.map(_.height + 1).getOrElse(Constants.Chain.PreGenesisHeight.toString)} at ${sdf.format(challengeStartTime)}")
+      log.info(s"Send to self mined block with nonce: ${Long.MaxValue / numberOfWorkers * myIdx}")
       self ! MineBlock(candidate, Long.MaxValue / numberOfWorkers * myIdx)
-    case _ =>
+    case message => log.info(s"Get smth strange on worker $myIdx when mining is paused")
   }
 }
 
