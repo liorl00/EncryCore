@@ -61,7 +61,7 @@ class EncryMiningWorker(myIdx: Int, numberOfWorkers: Int) extends Actor with Log
         s"${candidate.parentOpt.map(_.height + 1).getOrElse(Constants.Chain.PreGenesisHeight.toString)} at ${sdf.format(challengeStartTime)}")
       log.info(s"Send to self mined block with nonce: ${Long.MaxValue / numberOfWorkers * myIdx}")
       self ! MineBlock(candidate, Long.MaxValue / numberOfWorkers * myIdx)
-    case message => log.info(s"Get smth strange on worker $myIdx when mining is paused")
+    case message => log.info(s"Get smth strange($message) on worker $myIdx when mining is paused")
     case Ping => log.info(s"Worker $myIdx is sleeping")
   }
 }
